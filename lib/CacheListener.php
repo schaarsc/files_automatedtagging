@@ -25,19 +25,35 @@ use OCP\Files\Cache\CacheInsertEvent;
 use OCP\Files\Cache\CacheUpdateEvent;
 use OCP\Files\Cache\ICacheEvent;
 use Symfony\Component\EventDispatcher\EventDispatcher;
+use OCP\SystemTag\MapperEvent;
+use OC\Files\Filesystem;
 
 class CacheListener {
 	private $eventDispatcher;
 	private $operation;
+	private $filesystem;
 
-	public function __construct(EventDispatcher $eventDispatcher, Operation $operation) {
+	public function __construct(EventDispatcher $eventDispatcher, Operation $operation, Filesystem $filesystem) {
 		$this->eventDispatcher = $eventDispatcher;
 		$this->operation = $operation;
+		$this->filesystem = $filesystem;
 	}
 
 	public function listen() {
 		$this->eventDispatcher->addListener(CacheInsertEvent::class, [$this, 'onCacheEvent']);
 		$this->eventDispatcher->addListener(CacheUpdateEvent::class, [$this, 'onCacheEvent']);
+		$this->eventDispatcher->addListener(MapperEvent::EVENT_ASSIGN, [$this, 'onMapperEvent']);
+		$this->eventDispatcher->addListener(MapperEvent::EVENT_UNASSIGN, [$this, 'onMapperEvent']);
+	}
+
+	public function onMapperEvent(MapperEvent $event) {
+	    $path = $this->filesystem->getPath($event->getObjectId());
+	    $info = $this->filesystem->getFileInfo($path, false);
+	    $storage = $info->getStorage();
+
+	    if ($this->operation->isTaggingPath($storage, $event->getObjectType() . $path)) {
+	        $this->operation->checkOperations($storage, $event->getObjectId(), $event->getObjectType() . $path);
+	    }
 	}
 
 	public function onCacheEvent(ICacheEvent $event) {
